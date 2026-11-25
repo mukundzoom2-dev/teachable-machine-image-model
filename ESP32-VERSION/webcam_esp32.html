@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daksham Project (ESP32)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@100..900&display=swap" rel="stylesheet">
+<style>
+    body { font-family: 'Google Sans', 'Google Sans Flex', system-ui, sans-serif; margin: 2rem auto; max-width: 640px; padding: 0 1rem; text-align: center; }
+    button, input, select, code { font-family: inherit; }
+    code { font-family: ui-monospace, Consolas, monospace; }
+    #webcam-container { display: flex; justify-content: center; }
+    #webcam-container canvas {
+        border-radius: 28px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        max-width: 100%;
+        height: auto;
+    }
+    .box { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    .hint { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
+    .row { display: flex; align-items: center; justify-content: center; gap: 1rem; }
+    .file-btn {
+        display: inline-block;
+        margin: 0.4rem 0;
+        padding: 0.5rem 1.2rem;
+        border-radius: 999px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: #6b7280;
+        color: #fff;
+        transition: background 0.2s;
+    }
+    .file-btn:hover { background: #4b5563; }
+    #file-status div { margin: 2px 0; }
+    .ok { color: #1b7f3b; }
+    .missing { color: #b00020; }
+    /* Camera box sits inside the Start/Stop box and fades in/out */
+    #webcam-container {
+        margin: 1rem 0 0;
+        opacity: 0;
+        transform: scale(0.96);
+        transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    #webcam-container.show { opacity: 1; transform: scale(1); }
+    #webcam-container:empty { margin: 0; }
+    #label-container div { margin: 2px 0; }
+    #error { color: #b00020; margin-top: 1rem; }
+    #result { font-size: 1.4rem; font-weight: 600; margin-top: 1rem; }
+    #eval-btn { display: none; margin-top: 0.5rem; }
+
+    /* Rounded buttons: Evaluate and the popup's OK */
+    #eval-btn, #modal button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.7rem 1.8rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: #6b7280;
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        transition: transform 0.1s, background 0.2s;
+    }
+    #eval-btn:hover, #modal button:hover { background: #4b5563; }
+    #eval-btn:active, #modal button:active { transform: scale(0.96); }
+
+    /* Rounded Start and Connect buttons */
+    #start-btn, #conn-btn {
+        border: none;
+        border-radius: 999px;
+        padding: 0.7rem 1.8rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: #6b7280;
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        transition: transform 0.1s, background 0.2s;
+    }
+    #start-btn:hover:not(:disabled), #conn-btn:hover:not(:disabled) { background: #4b5563; }
+    #start-btn:active:not(:disabled), #conn-btn:active:not(:disabled) { transform: scale(0.96); }
+    #start-btn:disabled, #conn-btn:disabled { box-shadow: none; }
+    #conn-btn.connected { background: #1b7f3b; }
+    #conn-btn.connected:hover:not(:disabled) { background: #166a31; }
+
+    input[type="file"]::file-selector-button {
+        font-family: inherit;
+        border: none;
+        border-radius: 999px;
+        padding: 0.5rem 1.2rem;
+        margin-right: 0.6rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: #6b7280;
+        color: #fff;
+        transition: background 0.2s;
+    }
+    input[type="file"]::file-selector-button:hover { background: #4b5563; }
+
+    /* Lift mapping */
+    .map-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 0.9rem; }
+    .map-row label { font-size: 0.95rem; font-weight: 600; }
+    .map-row select {
+        margin-left: 0.4rem; padding: 0.4rem 0.7rem; border-radius: 999px;
+        border: 1px solid #ccc; font-size: 0.95rem; background: #fff;
+    }
+    #serial-status { font-weight: 600; }
+    #serial-log { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; color: #444; margin-top: 0.4rem; min-height: 1.2em; }
+
+    /* Result popup */
+    #modal-backdrop {
+        display: none; position: fixed; inset: 0; z-index: 100;
+        background: rgba(0, 0, 0, 0.5);
+        align-items: center; justify-content: center;
+    }
+    #modal-backdrop.open { display: flex; }
+    #modal {
+        background: #fff; color: #111; border-radius: 12px;
+        padding: 2rem 2.5rem; text-align: center; min-width: 260px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    #modal-label { color: #666; font-size: 0.95rem; }
+    #modal-name { font-size: 2rem; font-weight: 700; margin: 0.5rem 0; }
+    #modal-percent { font-size: 1.2rem; color: #1b7f3b; margin-bottom: 0.5rem; }
+    #modal-sent { font-size: 0.95rem; color: #444; margin-bottom: 1.25rem; min-height: 1.2em; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<h2>Smart Waste Segregator (ESP32)</h2>
+
+<div class="box">
+    <label for="model-files"><strong>Upload your model files</strong></label><br>
+    <label for="model-files" class="file-btn">Choose Files</label>
+    <input type="file" id="model-files" multiple accept=".json,.bin" hidden>
+    <div class="hint">Select all three files at once: <code><b>model.json</b></code>, <code><b>metadata.json</b></code> and <code><b>weights.bin</b></code> (keep the original names).</div>
+    <div id="file-status">
+        <div id="st-model" class="missing">✗ model.json</div>
+        <div id="st-meta" class="missing">✗ metadata.json</div>
+        <div id="st-weights" class="missing">✗ weights.bin</div>
+    </div>
+</div>
+
+<div class="box">
+    <strong>ESP32 connection</strong><br>
+    <div class="row" style="margin-top:0.6rem">
+        <button type="button" id="conn-btn" onclick="toggleSerial()">Connect ESP32</button>
+    </div>
+    <div id="serial-status" class="missing">Not connected</div>
+    <div id="serial-log"></div>
+    <div class="map-row">
+        <label>Lift 1 for
+            <select id="map1" onchange="saveMapping()"><option value="">(none)</option></select>
+        </label>
+        <label>Lift 2 for
+            <select id="map2" onchange="saveMapping()"><option value="">(none)</option></select>
+        </label>
+    </div>
+    <div class="hint">Needs Chrome or Edge, with the page opened from a file or <code>https://</code>. Close the Arduino Serial Monitor first, then pick the ESP32's COM port. The class lists fill in after you press Start.</div>
+</div>
+
+<div class="box">
+    <div class="row">
+        <button type="button" id="start-btn" onclick="toggleCamera()" disabled>Start</button>
+    </div>
+    <div id="webcam-container"></div>
+</div>
+
+<div id="label-container"></div>
+<div id="result"></div>
+<button type="button" id="eval-btn" onclick="startEvaluation()">Evaluate</button>
+<div id="error"></div>
+
+<!-- Result popup -->
+<div id="modal-backdrop" onclick="if (event.target === this) closeResultModal()">
+    <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-name">
+        <div id="modal-label">Result</div>
+        <div id="modal-name"></div>
+        <div id="modal-percent"></div>
+        <div id="modal-sent"></div>
+        <button type="button" onclick="closeResultModal()">OK</button>
+    </div>
+</div>
+
+<!-- Pinned versions used in Teachable Machine's own docs (more stable than @latest) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script type="text/javascript">
+    let model, webcam, labelContainer, maxPredictions;
+    let started = false;
+    let running = false;
+    let animId = null;
+    let fadeTimer = null;
+    let modelFile = null, metadataFile = null, weightsFile = null;
+
+    const fileInput = document.getElementById("model-files");
+    const startBtn = document.getElementById("start-btn");
+
+    function setStatus(id, file, label) {
+        const el = document.getElementById(id);
+        el.className = file ? "ok" : "missing";
+        el.textContent = (file ? "✓ " : "✗ ") + (file ? file.name : label);
+    }
+
+    // Sort the selected files into model / metadata / weights by name
+    fileInput.addEventListener("change", () => {
+        modelFile = metadataFile = weightsFile = null;
+        for (const f of fileInput.files) {
+            const name = f.name.toLowerCase();
+            if (name.endsWith(".bin")) weightsFile = f;
+            else if (name.endsWith(".json") && name.includes("metadata")) metadataFile = f;
+            else if (name.endsWith(".json")) modelFile = f;
+        }
+        setStatus("st-model", modelFile, "model.json");
+        setStatus("st-meta", metadataFile, "metadata.json");
+        setStatus("st-weights", weightsFile, "weights.bin");
+        startBtn.disabled = running ? false : (!(modelFile && metadataFile && weightsFile) || started);
+    });
+
+    // ---------------------------------------------------------------
+    // ESP32 link over USB (Web Serial, 9600 baud, matches the sketch)
+    // ---------------------------------------------------------------
+    let port = null, writer = null, reader = null;
+    let keepReading = false, readLoopDone = null;
+    const connBtn = document.getElementById("conn-btn");
+    const serialStatus = document.getElementById("serial-status");
+    const serialLog = document.getElementById("serial-log");
+
+    function setSerialStatus(text, ok) {
+        serialStatus.textContent = text;
+        serialStatus.className = ok ? "ok" : "missing";
+    }
+
+    async function toggleSerial() {
+        if (port) await disconnectSerial();
+        else await connectSerial();
+    }
+
+    async function connectSerial() {
+        document.getElementById("error").textContent = "";
+        if (!("serial" in navigator)) {
+            document.getElementById("error").textContent =
+                "Error: this browser has no Web Serial. Use Chrome or Edge on a computer.";
+            return;
+        }
+        try {
+            connBtn.disabled = true;
+            port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 9600 });
+            writer = port.writable.getWriter();
+            reader = port.readable.getReader();
+            keepReading = true;
+            readLoopDone = readLoop();
+            connBtn.textContent = "Disconnect ESP32";
+            connBtn.classList.add("connected");
+            setSerialStatus("Connected. The ESP32 may restart for a moment.", true);
+        } catch (e) {
+            port = writer = reader = null;
+            setSerialStatus("Not connected", false);
+            if (!(e && e.name === "NotFoundError")) { // NotFoundError = user closed the picker
+                document.getElementById("error").textContent =
+                    "Error: " + ((e && (e.message || e.name)) || String(e));
+            }
+        } finally {
+            connBtn.disabled = false;
+        }
+    }
+
+    // Show lines the ESP32 prints (e.g. "Lift 1 done")
+    async function readLoop() {
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+            while (keepReading) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop();
+                for (const line of lines) {
+                    const text = line.trim();
+                    if (text) serialLog.textContent = "ESP32: " + text;
+                }
+            }
+        } catch (e) {
+            console.error(e); // port unplugged or closed
+        }
+    }
+
+    async function disconnectSerial() {
+        keepReading = false;
+        try { if (reader) await reader.cancel(); } catch (e) { /* ignore */ }
+        try { if (readLoopDone) await readLoopDone; } catch (e) { /* ignore */ }
+        try { if (reader) reader.releaseLock(); } catch (e) { /* ignore */ }
+        try { if (writer) writer.releaseLock(); } catch (e) { /* ignore */ }
+        try { if (port) await port.close(); } catch (e) { /* ignore */ }
+        port = writer = reader = null;
+        connBtn.textContent = "Connect ESP32";
+        connBtn.classList.remove("connected");
+        setSerialStatus("Not connected", false);
+        serialLog.textContent = "";
+    }
+
+    // Handle the cable being unplugged
+    if ("serial" in navigator) {
+        navigator.serial.addEventListener("disconnect", (e) => {
+            if (port && e.target === port) disconnectSerial();
+        });
+    }
+
+    // Send "L1\n" or "L2\n" to the ESP32. Returns a short message for the popup.
+    async function sendCommand(cmd) {
+        if (!port || !writer) return "ESP32 not connected, so no lift moved.";
+        try {
+            await writer.write(new TextEncoder().encode(cmd + "\n"));
+            return "Sent " + cmd + " to the ESP32.";
+        } catch (e) {
+            console.error(e);
+            return "Could not send " + cmd + ": " + ((e && e.message) || e);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Class to lift mapping
+    // ---------------------------------------------------------------
+    const MAP_KEY = "wasteSorterEsp32Map";
+
+    function loadSavedMapping() {
+        try { return JSON.parse(localStorage.getItem(MAP_KEY)) || {}; } catch (e) { return {}; }
+    }
+
+    function saveMapping() {
+        try {
+            localStorage.setItem(MAP_KEY, JSON.stringify({
+                lift1: document.getElementById("map1").value,
+                lift2: document.getElementById("map2").value
+            }));
+        } catch (e) { /* storage not available, that is fine */ }
+    }
+
+    // Fill both dropdowns with the model's class names
+    function fillMapping(names) {
+        const saved = loadSavedMapping();
+        [["map1", saved.lift1], ["map2", saved.lift2]].forEach(([id, wanted]) => {
+            const sel = document.getElementById(id);
+            sel.innerHTML = "";
+            const none = document.createElement("option");
+            none.value = ""; none.textContent = "(none)";
+            sel.appendChild(none);
+            names.forEach((n) => {
+                const o = document.createElement("option");
+                o.value = n; o.textContent = n;
+                sel.appendChild(o);
+            });
+            if (wanted && names.includes(wanted)) sel.value = wanted;
+        });
+    }
+
+    // Which command (if any) belongs to this result?
+    function commandFor(name) {
+        if (document.getElementById("map1").value === name) return "L1";
+        if (document.getElementById("map2").value === name) return "L2";
+        return null;
+    }
+
+    // Load the uploaded model and set up the webcam
+    async function init() {
+        if (started) return; // prevent double-starts
+        started = true;
+        startBtn.disabled = true;
+        document.getElementById("error").textContent = "";
+
+        try {
+            if (!(modelFile && metadataFile && weightsFile)) {
+                throw new Error("Please select model.json, metadata.json and weights.bin first.");
+            }
+
+            // Load from the uploaded files (order: model, weights, metadata)
+            // Make sure the weights file name matches what model.json expects
+            const manifest = JSON.parse(await modelFile.text());
+            const expected = manifest.weightsManifest && manifest.weightsManifest[0] &&
+                manifest.weightsManifest[0].paths && manifest.weightsManifest[0].paths[0];
+            if (expected && expected.split("/").pop() !== weightsFile.name) {
+                throw new Error('model.json expects a weights file named "' + expected +
+                    '" but you selected "' + weightsFile.name + '". Rename the file and select it again.');
+            }
+
+            model = await tmImage.loadFromFiles(modelFile, weightsFile, metadataFile);
+            maxPredictions = model.getTotalClasses();
+
+            // Fill the lift dropdowns with the class names from the model
+            try { fillMapping(model.getClassLabels()); } catch (e) { console.error(e); }
+
+            const flip = true; // whether to flip the webcam
+            webcam = new tmImage.Webcam(320, 320, flip); // width, height, flip
+            await webcam.setup(); // request access to the webcam
+            await webcam.play();
+
+            // Add the camera and fade it in
+            const camBox = document.getElementById("webcam-container");
+            clearTimeout(fadeTimer);
+            camBox.innerHTML = "";
+            camBox.appendChild(webcam.canvas);
+            window.requestAnimationFrame(() =>
+                window.requestAnimationFrame(() => camBox.classList.add("show")));
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                labelContainer.appendChild(document.createElement("div"));
+            }
+
+            // Show the live camera first; evaluation starts only when the button is clicked
+            document.getElementById("result").textContent = "Ready. Click Evaluate to begin.";
+            document.getElementById("eval-btn").style.display = "inline-block";
+            running = true;
+            startBtn.textContent = "Stop";
+            startBtn.disabled = false;
+            animId = window.requestAnimationFrame(loop);
+        } catch (e) {
+            started = false;
+            startBtn.disabled = !(modelFile && metadataFile && weightsFile);
+            document.getElementById("error").textContent =
+                "Error: " + ((e && (e.message || e.name)) || String(e));
+            console.error(e);
+        }
+    }
+
+    // The Start button toggles between Start and Stop
+    function toggleCamera() {
+        if (running) stopCamera();
+        else init();
+    }
+
+    // Stop the camera and reset the page so it can be started again
+    function stopCamera() {
+        running = false;
+        started = false;
+        evaluating = false;
+        if (animId) window.cancelAnimationFrame(animId);
+        animId = null;
+        if (webcam) {
+            webcam.stop(); // release the camera
+            webcam = null;
+        }
+        // Fade the camera out, then remove it
+        const camBox = document.getElementById("webcam-container");
+        camBox.classList.remove("show");
+        clearTimeout(fadeTimer);
+        fadeTimer = setTimeout(() => { camBox.innerHTML = ""; }, 500);
+        document.getElementById("label-container").innerHTML = "";
+        document.getElementById("result").textContent = "";
+        const evalBtn = document.getElementById("eval-btn");
+        evalBtn.style.display = "none";
+        evalBtn.textContent = "Evaluate";
+        closeResultModal();
+        startBtn.textContent = "Start";
+        startBtn.disabled = !(modelFile && metadataFile && weightsFile);
+    }
+
+    // How often to run the model, in milliseconds (500 = every 0.5 seconds)
+    const UPDATE_INTERVAL_MS = 500;
+    let lastPredictionTime = 0;
+
+    async function loop(timestamp) {
+        if (!running || !webcam) return;
+        webcam.update(); // keep the video smooth
+        if (timestamp - lastPredictionTime >= UPDATE_INTERVAL_MS) {
+            lastPredictionTime = timestamp;
+            await predict(); // refresh the labels every 0.5 seconds
+        }
+        if (!running) return; // stopped while predicting
+        animId = window.requestAnimationFrame(loop);
+    }
+
+    // Run the webcam image through the image model
+    async function predict() {
+        const prediction = await model.predict(webcam.canvas);
+        if (!running) return; // stopped while predicting
+        for (let i = 0; i < maxPredictions; i++) {
+            const classPrediction =
+                prediction[i].className + ": " + (prediction[i].probability * 100).toFixed(0) + "%";
+            labelContainer.childNodes[i].innerHTML = classPrediction;
+        }
+
+        // Collect predictions during the evaluation window
+        if (evaluating) {
+            evalCount++;
+            for (let i = 0; i < maxPredictions; i++) {
+                evalSums[i] += prediction[i].probability;
+                evalNames[i] = prediction[i].className;
+            }
+
+            const elapsed = performance.now() - evalStart;
+            const resultEl = document.getElementById("result");
+
+            if (elapsed < EVAL_DURATION_MS) {
+                const secondsLeft = Math.ceil((EVAL_DURATION_MS - elapsed) / 1000);
+                resultEl.textContent = "Evaluating... " + secondsLeft + "s";
+            } else {
+                // Pick the class with the highest average probability
+                let best = 0;
+                for (let i = 1; i < maxPredictions; i++) {
+                    if (evalSums[i] > evalSums[best]) best = i;
+                }
+                const avgPercent = ((evalSums[best] / evalCount) * 100).toFixed(0);
+                const winner = evalNames[best];
+                resultEl.textContent = "";
+                evaluating = false;
+                showResultModal(winner, avgPercent);
+                handleResult(winner); // tell the ESP32 which lift to raise
+                const evalBtn = document.getElementById("eval-btn");
+                evalBtn.textContent = "Evaluate again";
+                evalBtn.style.display = "inline-block";
+            }
+        }
+    }
+
+    // Send the matching lift command (if this class is mapped) and show what happened
+    async function handleResult(name) {
+        const sentEl = document.getElementById("modal-sent");
+        const cmd = commandFor(name);
+        if (!cmd) {
+            sentEl.textContent = "No lift is set for this class.";
+            return;
+        }
+        sentEl.textContent = await sendCommand(cmd);
+    }
+
+    // Evaluate for 5 seconds, then show what it is (highest average match)
+    const EVAL_DURATION_MS = 5000;
+    let evalStart = 0, evalSums = [], evalNames = [], evalCount = 0, evaluating = false;
+
+    // Popup window showing the final result
+    function showResultModal(name, percent) {
+        document.getElementById("modal-name").textContent = name;
+        document.getElementById("modal-percent").textContent = percent + "% match";
+        document.getElementById("modal-sent").textContent = "";
+        document.getElementById("modal-backdrop").classList.add("open");
+    }
+
+    function closeResultModal() {
+        document.getElementById("modal-backdrop").classList.remove("open");
+    }
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeResultModal();
+    });
+
+    function startEvaluation() {
+        if (!model || evaluating) return;
+        evalStart = performance.now();
+        evalSums = new Array(maxPredictions).fill(0);
+        evalNames = new Array(maxPredictions).fill("");
+        evalCount = 0;
+        evaluating = true;
+        document.getElementById("result").textContent = "Evaluating... 5s";
+        document.getElementById("eval-btn").style.display = "none";
+    }
+</script>
+</body>
+</html>
